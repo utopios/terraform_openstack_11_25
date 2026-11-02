@@ -1,0 +1,39 @@
+# -*- mode: ruby -*-
+# OpenStack AIO (Kolla-Ansible 2025.1, images aarch64) sur Parallels Desktop / Mac Apple Silicon
+#
+# Equivalent du Vagrantfile VirtualBox (racine du depot) pour le poste formateur :
+#   NIC1 (shared/NAT)        : Internet de la VM
+#   NIC2 (host-only)         : 192.168.56.10  -> management/API, VIP 192.168.56.250
+#   NIC3 (host-only, sans IP): reseau externe Neutron 192.168.57.0/24 (hote = 192.168.57.1)
+#   2 disques additionnels   : 40 Go Cinder (LVM), 20 Go Swift (non utilise : pas d'image Swift aarch64)
+#
+# Differences assumees avec le lab des stagiaires (x86 / VirtualBox / OVA) :
+#   - Ubuntu 24.04 + OpenStack 2025.1 (quay.io ne publie plus les images 2024.1,
+#     et seules les images debian-bookworm existent en aarch64)
+#   - Swift desactive (aucune image aarch64)
+#   - KVM imbrique si Parallels l'expose (/dev/kvm), sinon emulation QEMU
+
+Vagrant.configure("2") do |config|
+  config.vm.box      = "bento/ubuntu-24.04"
+  config.vm.hostname = "openstack-aio"
+
+  config.vm.network "private_network", ip: "192.168.56.10"
+  config.vm.network "private_network", ip: "192.168.57.10", auto_config: false
+
+  config.vm.synced_folder ".", "/vagrant"
+
+  config.vm.provider "parallels" do |prl|
+    prl.name   = "openstack-aio-kolla-prl"
+    prl.cpus   = 8
+    prl.memory = 16384
+    prl.update_guest_tools = false
+    prl.customize "post-import", ["set", :id, "--nested-virt", "on"]
+    prl.customize "post-import", ["set", :id, "--device-add", "hdd", "--size", "40960", "--iface", "sata"]
+    prl.customize "post-import", ["set", :id, "--device-add", "hdd", "--size", "20480", "--iface", "sata"]
+  end
+
+  config.vm.provision "shell", path: "scripts/01-bootstrap.sh"
+  config.vm.provision "shell", path: "scripts/02-deploy-kolla.sh"
+  config.vm.provision "shell", path: "scripts/03-init-lab.sh"
+  config.vm.provision "nova-egress", type: "shell", path: "scripts/04-nova-egress.sh"
+end

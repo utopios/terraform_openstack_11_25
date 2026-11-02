@@ -1,0 +1,7 @@
+**/.vagrant/
+**/.terraform/
+.vagrant/*
+.terraform/*
+./lab-parallels/
+./lab-parallels/*
+./lab-parallels

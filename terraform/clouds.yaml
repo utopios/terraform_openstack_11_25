@@ -3,7 +3,7 @@ clouds:
     auth:
       auth_url: http://192.168.56.250:5000
       username: admin
-      password: YJXdnNo5jkAOArenhlkt7l83Xt7FJOFFY7oOAQA8
+      password: yULvUivTFHATjjFTvfydhVwOTUZz4MjdDhtlggtc
       project_name: admin
       user_domain_name: Default
       project_domain_name: Default

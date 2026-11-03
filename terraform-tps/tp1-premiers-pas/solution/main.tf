@@ -28,21 +28,33 @@ resource "openstack_networking_secgroup_v2" "sg" {
   description = "TP1 : SSH et ICMP"
 }
 
-resource "openstack_networking_secgroup_rule_v2" "ssh" {
-  direction         = "ingress"
-  ethertype         = "IPv4"
-  protocol          = "tcp"
-  port_range_min    = 22
-  port_range_max    = 22
-  remote_ip_prefix  = "0.0.0.0/0"
-  security_group_id = openstack_networking_secgroup_v2.sg.id
-}
+# resource "openstack_networking_secgroup_rule_v2" "ssh" {
+#   direction         = "ingress"
+#   ethertype         = "IPv4"
+#   protocol          = "tcp"
+#   port_range_min    = 22
+#   port_range_max    = 22
+#   remote_ip_prefix  = "0.0.0.0/0"
+#   security_group_id = openstack_networking_secgroup_v2.sg.id
+# }
 
-resource "openstack_networking_secgroup_rule_v2" "icmp" {
-  direction         = "ingress"
-  ethertype         = "IPv4"
-  protocol          = "icmp"
-  remote_ip_prefix  = "0.0.0.0/0"
+# resource "openstack_networking_secgroup_rule_v2" "icmp" {
+#   direction         = "ingress"
+#   ethertype         = "IPv4"
+#   protocol          = "icmp"
+#   remote_ip_prefix  = "0.0.0.0/0"
+#   security_group_id = openstack_networking_secgroup_v2.sg.id
+# }
+
+resource "openstack_networking_secgroup_rule_v2" "sg_rules" {
+  for_each = var.sg_rules
+
+  direction         = each.value.direction
+  ethertype         = each.value.ethertype
+  protocol          = each.value.protocol
+  port_range_min    = each.value.port
+  port_range_max    = each.value.port
+  remote_ip_prefix  = each.value.cidr
   security_group_id = openstack_networking_secgroup_v2.sg.id
 }
 

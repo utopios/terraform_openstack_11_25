@@ -32,3 +32,14 @@ variable "dns_nameservers" {
   description = "DNS annoncés par le DHCP"
   type        = list(string)
 }
+
+variable "sg_rules" {
+  description = "Règles entrantes du security group, une entrée par règle"
+  type = map(object({
+    protocol = string
+    port     = optional(number)              # null pour ICMP
+    cidr     = optional(string, "0.0.0.0/0")
+    direction = optional(string, "ingress")   # "ingress" ou "egress"
+    ethertype = optional(string, "IPv4")       # "IPv4" ou "IPv6"
+  }))
+}

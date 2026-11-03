@@ -1,0 +1,146 @@
+# Pipeline GitLab CI — démo backend GitLab (un code, 3 backends, 3 tfvars)
+#
+# Idée : en CI, CHAQUE job fait son propre `init -reconfigure` sur le backend
+# de SON environnement, puis plan/apply avec le tfvars du MÊME environnement.
+# Le danger du pattern (init prod + apply dev) disparaît : init et apply sont
+# toujours dans le même job, avec la même variable ENV.
+#
+# Fichier utilisable de deux façons :
+#   1. ce dossier poussé comme projet GitLab à lui seul : le fichier est à la
+#      racine, rien à faire.
+#   2. depuis la racine du dépôt de formation : créer un .gitlab-ci.yml racine
+#      contenant   include: { local: demo-backend-gitlab/.gitlab-ci.yml }
+#
+# Authentification au backend http :
+#   - par défaut, le job token (CI_JOB_TOKEN) : fonctionne si les états sont
+#     dans le MÊME projet GitLab que ce pipeline ;
+#   - sinon (états dans le projet 84876184 "backend" comme dans la démo),
+#     définir une variable CI/CD masquée GITLAB_TF_TOKEN = PAT scope api
+#     (Settings → CI/CD → Variables). Le script la prend en priorité.
+
+image:
+  name: hashicorp/terraform:1.5.7
+  entrypoint: [""]            # l'image a `terraform` en entrypoint : on le neutralise
+
+stages:
+  - validate
+  - plan
+  - apply
+  - destroy
+
+variables:
+  TF_IN_AUTOMATION: "true"    # sorties sans couleur ni invites interactives
+  TF_INPUT: "false"
+  TF_PLUGIN_CACHE_DIR: ${CI_PROJECT_DIR}/.terraform.d/plugin-cache
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web"            # bouton "Run pipeline" (destroy)
+
+cache:
+  key: terraform-plugins
+  paths:
+    - .terraform.d/plugin-cache
+
+# ---------- Modèle commun : se placer dans le dossier, s'authentifier, init ----------
+.tf-env:
+  before_script:
+    - '[ -d demo-backend-gitlab ] && cd demo-backend-gitlab || true'
+    - mkdir -p "$TF_PLUGIN_CACHE_DIR"
+    # Identifiants du backend http : PAT si fourni, sinon job token.
+    - |
+      if [ -n "$GITLAB_TF_TOKEN" ]; then
+        export TF_HTTP_USERNAME="$GITLAB_USER_LOGIN"
+        export TF_HTTP_PASSWORD="$GITLAB_TF_TOKEN"
+      else
+        export TF_HTTP_USERNAME="gitlab-ci-token"
+        export TF_HTTP_PASSWORD="$CI_JOB_TOKEN"
+      fi
+    # Le .hcl fixe un username : on le surcharge, le dernier -backend-config gagne.
+    - terraform init -reconfigure
+        -backend-config="backends/${ENV}.hcl"
+        -backend-config="username=${TF_HTTP_USERNAME}"
+    - terraform output environnement 2>/dev/null || echo "(état ${ENV} encore vide)"
+
+# ---------- validate : sans backend, une seule fois ----------
+fmt:
+  stage: validate
+  script:
+    - '[ -d demo-backend-gitlab ] && cd demo-backend-gitlab || true'
+    - terraform fmt -check -recursive -diff
+
+validate:
+  stage: validate
+  script:
+    - '[ -d demo-backend-gitlab ] && cd demo-backend-gitlab || true'
+    - terraform init -backend=false
+    - terraform validate
+
+# ---------- plan : un job par environnement, en parallèle ----------
+plan:
+  stage: plan
+  extends: .tf-env
+  parallel:
+    matrix:
+      - ENV: [dev, staging, prod]
+  script:
+    - terraform plan -var-file="tfvars/${ENV}.tfvars" -out="tfplan-${ENV}"
+    - terraform show -no-color "tfplan-${ENV}" > "tfplan-${ENV}.txt"
+  artifacts:
+    name: "plan-${ENV}-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - demo-backend-gitlab/tfplan-${ENV}
+      - demo-backend-gitlab/tfplan-${ENV}.txt
+      - tfplan-${ENV}
+      - tfplan-${ENV}.txt
+    expire_in: 1 week
+
+# ---------- apply : rejoue EXACTEMENT le plan approuvé ----------
+.apply:
+  stage: apply
+  extends: .tf-env
+  script:
+    - terraform apply -input=false "tfplan-${ENV}"
+    - terraform output
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  resource_group: ${ENV}          # jamais deux apply du même env en même temps
+
+apply:dev:
+  extends: .apply
+  variables: { ENV: dev }
+  needs: ["plan: [dev]"]
+  environment: { name: dev }
+
+apply:staging:
+  extends: .apply
+  variables: { ENV: staging }
+  needs: ["plan: [staging]", "apply:dev"]
+  environment: { name: staging }
+  when: manual                    # quelqu'un clique
+
+apply:prod:
+  extends: .apply
+  variables: { ENV: prod }
+  needs: ["plan: [prod]", "apply:staging"]
+  environment: { name: prod }
+  when: manual
+  allow_failure: false            # tant que prod n'est pas appliqué, le pipeline reste "bloqué"
+
+# ---------- destroy : manuel, jamais automatique ----------
+destroy:
+  stage: destroy
+  extends: .tf-env
+  parallel:
+    matrix:
+      - ENV: [dev, staging, prod]
+  script:
+    - terraform destroy -auto-approve -var-file="tfvars/${ENV}.tfvars"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+  resource_group: ${ENV}

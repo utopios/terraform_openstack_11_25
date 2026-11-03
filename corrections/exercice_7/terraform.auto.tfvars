@@ -1,0 +1,11 @@
+cloud_name            = "kolla-aio"
+public_key_path       = "~/.ssh/id_rsa.pub"
+image_name            = "ubuntu-22.04"
+flavor_name           = "m1.small"
+external_network_name = "public"
+subnet_cidr           = "10.10.7.0/24"
+dns_nameservers       = ["8.8.8.8"]
+web_count             = 2
+lb_port               = 80
+backend_port          = 80
+lb_algorithm          = "ROUND_ROBIN"

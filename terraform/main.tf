@@ -21,4 +21,7 @@ resource "openstack_compute_instance_v2" "basic" {
   network {
     name = openstack_networking_network_v2.example_network.name
   }
+  provisioner "remote-exec" {
+    inline = ["echo ${self.network.0.name}"]
+  }
 }

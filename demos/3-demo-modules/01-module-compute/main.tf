@@ -45,7 +45,7 @@ resource "openstack_networking_secgroup_rule_v2" "icmp" {
 }
 
 module "vm" {
-    source = "./modules/compute"
+    source = "git::https://github.com/utopios/module_vm_openstack_11_26.git"
     name               = local.vm_name
     image_name         = var.image_name
     flavor_name        = var.flavor_name

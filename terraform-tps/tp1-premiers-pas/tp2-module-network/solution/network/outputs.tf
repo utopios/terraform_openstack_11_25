@@ -14,3 +14,7 @@ output "router_interface_id" {
   description = "Sert à exprimer la dépendance : VM après raccordement routeur"
   value       = openstack_networking_router_interface_v2.this.id
 }
+output "sg_id" {
+  description = "ID du security group créé"
+  value       = openstack_networking_secgroup_v2.this.id
+}
